@@ -29,7 +29,7 @@
 
   label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; color: #333; }
   label .hint { font-weight: 400; color: #999; font-size: 12px; margin-left: 6px; }
-  input[type="text"], input[type="password"], input[type="url"], textarea, select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; background: #fafafa; color: #1a1a1a; transition: border-color 0.15s, background 0.15s; outline: none; }
+  input[type="text"], input[type="password"], input[type="url"], input[type="date"], textarea, select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; background: #fafafa; color: #1a1a1a; transition: border-color 0.15s, background 0.15s; outline: none; }
   input:focus, textarea:focus, select:focus { border-color: #2d7a4f; background: #fff; }
   textarea { resize: vertical; min-height: 120px; line-height: 1.5; }
   .field + .field { margin-top: 16px; }
@@ -122,21 +122,49 @@
   .country-tag button:hover { color: #c0392b; }
   .no-countries-hint { font-size: 12px; color: #aaa; line-height: 20px; }
 
-  .age-filter-wrap { transition: opacity 0.15s; }
-  .age-filter-wrap.disabled { opacity: 0.4; pointer-events: none; }
-  .age-filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .age-select {
+  .filter-wrap { transition: opacity 0.15s; }
+  .filter-wrap.disabled { opacity: 0.4; pointer-events: none; }
+
+  .filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  .age-select, .filter-select {
     width: auto; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px;
     font-size: 14px; font-family: inherit; background: #fafafa; color: #1a1a1a;
     outline: none; transition: border-color 0.15s;
   }
-  .age-select:focus { border-color: #2d7a4f; background: #fff; }
-  .age-input {
-    width: 80px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px;
+  .age-select:focus, .filter-select:focus { border-color: #2d7a4f; background: #fff; }
+
+  .age-input, .filter-input-sm {
+    width: 90px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px;
     font-size: 14px; font-family: inherit; background: #fafafa; color: #1a1a1a;
     outline: none; transition: border-color 0.15s;
   }
-  .age-input:focus { border-color: #2d7a4f; background: #fff; }
+  .age-input:focus, .filter-input-sm:focus { border-color: #2d7a4f; background: #fff; }
+
+  .filter-label-sm { font-size: 13px; color: #888; }
+
+  .range-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .range-row input[type="number"] {
+    width: 100px; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px;
+    font-size: 14px; font-family: inherit; background: #fafafa; color: #1a1a1a; outline: none;
+  }
+  .range-row input[type="number"]:focus { border-color: #2d7a4f; background: #fff; }
+
+  .date-pair { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .date-pair input[type="date"] { flex: 1; min-width: 130px; }
+
+  /* birthday month picker */
+  .month-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .month-btn {
+    padding: 5px 10px; border-radius: 16px; border: 1px solid #ddd;
+    background: #fafafa; cursor: pointer; font-size: 12px; font-weight: 500;
+    color: #555; transition: all 0.15s;
+  }
+  .month-btn:hover { border-color: #2d7a4f; color: #2d7a4f; }
+  .month-btn.active { background: #2d7a4f; border-color: #2d7a4f; color: #fff; }
+
+  /* dividers between filter blocks */
+  .server-block + .server-block { border-top: 1px solid #f0f0f0; padding-top: 22px; }
 </style>
 </head>
 <body>
@@ -273,14 +301,7 @@
       <div class="server-block">
         <div class="filter-section-title">Country</div>
         <div class="field">
-          <input
-            type="text"
-            class="country-search-input"
-            id="countrySearch"
-            placeholder="Search countries..."
-            oninput="filterCountryList(this.value)"
-            autocomplete="off"
-          >
+          <input type="text" class="country-search-input" id="countrySearch" placeholder="Search countries..." oninput="filterCountryList(this.value)" autocomplete="off">
           <div class="country-list" id="countryList"></div>
           <div class="selected-countries" id="selectedCountries">
             <span class="no-countries-hint" id="noCountriesHint">No countries selected — all users included</span>
@@ -293,27 +314,161 @@
         <div class="filter-section-title">
           Age
           <label class="filter-enable-label">
-            <input type="checkbox" id="ageFilterEnabled" onchange="toggleAgeFilter(this.checked)">
-            Enable filter
+            <input type="checkbox" id="ageFilterEnabled" onchange="toggleFilter('age', this.checked)">
+            Enable
           </label>
         </div>
-        <div class="age-filter-wrap disabled" id="ageFilterWrap">
-          <div class="age-filter-row">
+        <div class="filter-wrap disabled" id="ageFilterWrap">
+          <div class="filter-row">
             <select class="age-select" id="ageOperator" onchange="updateAgeFilter()">
               <option value="gte">≥ at least</option>
               <option value="lte">≤ at most</option>
               <option value="eq">= exactly</option>
+              <option value="range">between</option>
             </select>
-            <input
-              type="number"
-              class="age-input"
-              id="ageValue"
-              min="0"
-              max="120"
-              value="18"
-              oninput="updateAgeFilter()"
-            >
-            <span style="font-size:13px;color:#888;">years old</span>
+            <input type="number" class="age-input" id="ageValue" min="0" max="120" value="18" oninput="updateAgeFilter()">
+            <span id="ageRangeSep" style="font-size:13px;color:#888;display:none;">—</span>
+            <input type="number" class="age-input" id="ageValueMax" min="0" max="120" value="65" oninput="updateAgeFilter()" style="display:none;">
+            <span class="filter-label-sm">years old</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Birthday month -->
+      <div class="server-block">
+        <div class="filter-section-title">
+          Birthday month
+          <label class="filter-enable-label">
+            <input type="checkbox" id="birthdayFilterEnabled" onchange="toggleFilter('birthday', this.checked)">
+            Enable
+          </label>
+        </div>
+        <div class="filter-wrap disabled" id="birthdayFilterWrap">
+          <p style="font-size:12px;color:#999;margin-bottom:10px;">Send to users whose birthday falls in the selected month(s)</p>
+          <div class="month-grid" id="monthGrid"></div>
+        </div>
+      </div>
+
+      <!-- Last purchase -->
+      <div class="server-block">
+        <div class="filter-section-title">
+          Last purchase
+          <label class="filter-enable-label">
+            <input type="checkbox" id="lastPurchaseFilterEnabled" onchange="toggleFilter('lastPurchase', this.checked)">
+            Enable
+          </label>
+        </div>
+        <div class="filter-wrap disabled" id="lastPurchaseFilterWrap">
+          <div class="filter-row">
+            <select class="filter-select" id="lastPurchasePreset" onchange="applyLastPurchasePreset(this.value)">
+              <option value="">— Quick select —</option>
+              <option value="7">Within last 7 days</option>
+              <option value="14">Within last 14 days</option>
+              <option value="30">Within last 30 days</option>
+              <option value="60">Within last 60 days</option>
+              <option value="custom">Custom range…</option>
+            </select>
+          </div>
+          <div id="lastPurchaseCustom" style="display:none;margin-top:12px;">
+            <label style="font-size:13px;color:#888;margin-bottom:6px;">Last purchase between</label>
+            <div class="date-pair">
+              <input type="date" id="lastPurchaseFrom" oninput="resetToPreview()">
+              <span class="filter-label-sm">and</span>
+              <input type="date" id="lastPurchaseTo" oninput="resetToPreview()">
+            </div>
+          </div>
+          <p id="lastPurchaseDesc" style="margin-top:8px;font-size:12px;color:#2d7a4f;"></p>
+        </div>
+      </div>
+
+      <!-- First purchase date -->
+      <div class="server-block">
+        <div class="filter-section-title">
+          First purchase date
+          <label class="filter-enable-label">
+            <input type="checkbox" id="firstPurchaseFilterEnabled" onchange="toggleFilter('firstPurchase', this.checked)">
+            Enable
+          </label>
+        </div>
+        <div class="filter-wrap disabled" id="firstPurchaseFilterWrap">
+          <label style="font-size:13px;color:#888;margin-bottom:6px;">First purchase between</label>
+          <div class="date-pair">
+            <input type="date" id="firstPurchaseFrom" oninput="resetToPreview()">
+            <span class="filter-label-sm">and</span>
+            <input type="date" id="firstPurchaseTo" oninput="resetToPreview()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Total orders count -->
+      <div class="server-block">
+        <div class="filter-section-title">
+          Total number of orders
+          <label class="filter-enable-label">
+            <input type="checkbox" id="ordersCountFilterEnabled" onchange="toggleFilter('ordersCount', this.checked)">
+            Enable
+          </label>
+        </div>
+        <div class="filter-wrap disabled" id="ordersCountFilterWrap">
+          <div class="filter-row">
+            <select class="filter-select" id="ordersCountOperator" onchange="resetToPreview()">
+              <option value="gte">≥ at least</option>
+              <option value="lte">≤ at most</option>
+              <option value="eq">= exactly</option>
+              <option value="range">between</option>
+            </select>
+            <input type="number" class="filter-input-sm" id="ordersCountValue" min="0" value="1" oninput="toggleOrdersCountRange(); resetToPreview()">
+            <span id="ordersCountRangeSep" style="font-size:13px;color:#888;display:none;">—</span>
+            <input type="number" class="filter-input-sm" id="ordersCountValueMax" min="0" value="5" oninput="resetToPreview()" style="display:none;">
+            <span class="filter-label-sm">orders</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Total spend -->
+      <div class="server-block">
+        <div class="filter-section-title">
+          Total spend (all time)
+          <label class="filter-enable-label">
+            <input type="checkbox" id="totalSpendFilterEnabled" onchange="toggleFilter('totalSpend', this.checked)">
+            Enable
+          </label>
+        </div>
+        <div class="filter-wrap disabled" id="totalSpendFilterWrap">
+          <div class="filter-row">
+            <select class="filter-select" id="totalSpendOperator" onchange="resetToPreview()">
+              <option value="gte">≥ at least</option>
+              <option value="lte">≤ at most</option>
+              <option value="range">between</option>
+            </select>
+            <input type="number" class="filter-input-sm" id="totalSpendValue" min="0" value="1000" oninput="toggleSpendRange(); resetToPreview()">
+            <span id="totalSpendRangeSep" style="font-size:13px;color:#888;display:none;">—</span>
+            <input type="number" class="filter-input-sm" id="totalSpendValueMax" min="0" value="5000" oninput="resetToPreview()" style="display:none;">
+            <span class="filter-label-sm">THB</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Average order -->
+      <div class="server-block">
+        <div class="filter-section-title">
+          Average order value
+          <label class="filter-enable-label">
+            <input type="checkbox" id="avgOrderFilterEnabled" onchange="toggleFilter('avgOrder', this.checked)">
+            Enable
+          </label>
+        </div>
+        <div class="filter-wrap disabled" id="avgOrderFilterWrap">
+          <div class="filter-row">
+            <select class="filter-select" id="avgOrderOperator" onchange="resetToPreview()">
+              <option value="gte">≥ at least</option>
+              <option value="lte">≤ at most</option>
+              <option value="range">between</option>
+            </select>
+            <input type="number" class="filter-input-sm" id="avgOrderValue" min="0" value="500" oninput="toggleAvgRange(); resetToPreview()">
+            <span id="avgOrderRangeSep" style="font-size:13px;color:#888;display:none;">—</span>
+            <input type="number" class="filter-input-sm" id="avgOrderValueMax" min="0" value="2000" oninput="resetToPreview()" style="display:none;">
+            <span class="filter-label-sm">THB</span>
           </div>
         </div>
       </div>
@@ -352,21 +507,21 @@
 <script>
 // ===== App state =====
 let selectedLang = '';
-
-// Two-step send flow: 'preview' -> 'send'
 let sendStep = 'preview';
-let cachedPhones = [];   // filled after preview, used on send
+let cachedPhones = [];
 
 const filters = {
-  countries: [],        // string[] — selected country names
-  age: {
-    enabled: false,
-    operator: 'gte',    // 'gte' | 'lte' | 'eq'
-    value: 18
-  }
+  countries: [],
+  age: { enabled: false, operator: 'gte', value: 18, valueMax: 65 },
+  birthday: { enabled: false, months: [] },        // months: 1-based int[]
+  lastPurchase: { enabled: false, days: null, from: null, to: null },
+  firstPurchase: { enabled: false, from: null, to: null },
+  ordersCount: { enabled: false, operator: 'gte', value: 1, valueMax: 5 },
+  totalSpend: { enabled: false, operator: 'gte', value: 1000, valueMax: 5000 },
+  avgOrder: { enabled: false, operator: 'gte', value: 500, valueMax: 2000 },
 };
 
-// ===== Countries list =====
+// ===== Countries =====
 const ALL_COUNTRIES = [
   "Thailand","Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda",
   "Argentina","Armenia","Australia","Austria","Azerbaijan","Bahamas","Bahrain",
@@ -400,7 +555,121 @@ const ALL_COUNTRIES = [
   "Vanuatu","Vatican City","Venezuela","Vietnam","Yemen","Zambia","Zimbabwe"
 ];
 
-// ===== Country filter logic =====
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// ===== Init months =====
+function initMonthGrid() {
+  const grid = document.getElementById('monthGrid');
+  MONTHS.forEach((m, i) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'month-btn';
+    btn.textContent = m;
+    btn.dataset.month = i + 1;
+    btn.onclick = () => toggleMonth(btn, i + 1);
+    grid.appendChild(btn);
+  });
+}
+
+function toggleMonth(btn, month) {
+  const idx = filters.birthday.months.indexOf(month);
+  if (idx === -1) { filters.birthday.months.push(month); btn.classList.add('active'); }
+  else { filters.birthday.months.splice(idx, 1); btn.classList.remove('active'); }
+  resetToPreview();
+}
+
+// ===== Generic enable/disable filter =====
+function toggleFilter(name, enabled) {
+  filters[name].enabled = enabled;
+  const wrapId = name + 'FilterWrap';
+  // handle special cases
+  const map = {
+    age: 'ageFilterWrap',
+    birthday: 'birthdayFilterWrap',
+    lastPurchase: 'lastPurchaseFilterWrap',
+    firstPurchase: 'firstPurchaseFilterWrap',
+    ordersCount: 'ordersCountFilterWrap',
+    totalSpend: 'totalSpendFilterWrap',
+    avgOrder: 'avgOrderFilterWrap',
+  };
+  const wrap = document.getElementById(map[name]);
+  if (wrap) wrap.classList.toggle('disabled', !enabled);
+  resetToPreview();
+}
+
+// ===== Age =====
+function updateAgeFilter() {
+  const op = document.getElementById('ageOperator').value;
+  filters.age.operator = op;
+  filters.age.value = parseInt(document.getElementById('ageValue').value, 10) || 0;
+  filters.age.valueMax = parseInt(document.getElementById('ageValueMax').value, 10) || 0;
+  const isRange = op === 'range';
+  document.getElementById('ageRangeSep').style.display = isRange ? '' : 'none';
+  document.getElementById('ageValueMax').style.display = isRange ? '' : 'none';
+  resetToPreview();
+}
+
+// ===== Last purchase preset =====
+function applyLastPurchasePreset(val) {
+  const custom = document.getElementById('lastPurchaseCustom');
+  const desc = document.getElementById('lastPurchaseDesc');
+  if (val === 'custom') {
+    custom.style.display = 'block';
+    filters.lastPurchase.days = null;
+    desc.textContent = '';
+  } else if (val) {
+    custom.style.display = 'none';
+    filters.lastPurchase.days = parseInt(val);
+    filters.lastPurchase.from = null;
+    filters.lastPurchase.to = null;
+    const d = new Date(); d.setDate(d.getDate() - parseInt(val));
+    desc.textContent = `Users who purchased on or after ${d.toLocaleDateString('en-GB')}`;
+  } else {
+    custom.style.display = 'none';
+    filters.lastPurchase.days = null;
+    desc.textContent = '';
+  }
+  resetToPreview();
+}
+
+// ===== Range toggle helpers =====
+function toggleOrdersCountRange() {
+  const op = document.getElementById('ordersCountOperator').value;
+  const isRange = op === 'range';
+  document.getElementById('ordersCountRangeSep').style.display = isRange ? '' : 'none';
+  document.getElementById('ordersCountValueMax').style.display = isRange ? '' : 'none';
+}
+function toggleSpendRange() {
+  const op = document.getElementById('totalSpendOperator').value;
+  const isRange = op === 'range';
+  document.getElementById('totalSpendRangeSep').style.display = isRange ? '' : 'none';
+  document.getElementById('totalSpendValueMax').style.display = isRange ? '' : 'none';
+}
+function toggleAvgRange() {
+  const op = document.getElementById('avgOrderOperator').value;
+  const isRange = op === 'range';
+  document.getElementById('avgOrderRangeSep').style.display = isRange ? '' : 'none';
+  document.getElementById('avgOrderValueMax').style.display = isRange ? '' : 'none';
+}
+
+// hook range selects
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('ordersCountOperator').addEventListener('change', () => { toggleOrdersCountRange(); resetToPreview(); });
+  document.getElementById('totalSpendOperator').addEventListener('change', () => { toggleSpendRange(); resetToPreview(); });
+  document.getElementById('avgOrderOperator').addEventListener('change', () => { toggleAvgRange(); resetToPreview(); });
+  document.getElementById('lastPurchaseFrom').addEventListener('change', () => {
+    filters.lastPurchase.from = document.getElementById('lastPurchaseFrom').value || null;
+    resetToPreview();
+  });
+  document.getElementById('lastPurchaseTo').addEventListener('change', () => {
+    filters.lastPurchase.to = document.getElementById('lastPurchaseTo').value || null;
+    resetToPreview();
+  });
+  document.getElementById('firstPurchaseFrom').addEventListener('change', () => resetToPreview());
+  document.getElementById('firstPurchaseTo').addEventListener('change', () => resetToPreview());
+});
+
+// ===== Country =====
 function renderCountryList(query) {
   const list = document.getElementById('countryList');
   const q = (query || '').toLowerCase().trim();
@@ -411,36 +680,22 @@ function renderCountryList(query) {
     const lbl = document.createElement('label');
     const esc = country.replace(/"/g, '&quot;');
     lbl.innerHTML = `<input type="checkbox"${checked ? ' checked' : ''} data-country="${esc}"> ${country}`;
-    lbl.querySelector('input').addEventListener('change', function() {
-      toggleCountry(country, this.checked);
-    });
+    lbl.querySelector('input').addEventListener('change', function() { toggleCountry(country, this.checked); });
     list.appendChild(lbl);
   });
 }
-
-function filterCountryList(q) {
-  renderCountryList(q);
-}
-
+function filterCountryList(q) { renderCountryList(q); }
 function toggleCountry(country, checked) {
-  if (checked && !filters.countries.includes(country)) {
-    filters.countries.push(country);
-    filters.countries.sort();
-  } else if (!checked) {
-    filters.countries = filters.countries.filter(c => c !== country);
-  }
+  if (checked && !filters.countries.includes(country)) { filters.countries.push(country); filters.countries.sort(); }
+  else if (!checked) { filters.countries = filters.countries.filter(c => c !== country); }
   renderSelectedCountries();
   renderCountryList(document.getElementById('countrySearch').value);
   resetToPreview();
 }
-
 function renderSelectedCountries() {
   const wrap = document.getElementById('selectedCountries');
   wrap.innerHTML = '';
-  if (filters.countries.length === 0) {
-    wrap.innerHTML = '<span class="no-countries-hint">No countries selected — all users included</span>';
-    return;
-  }
+  if (filters.countries.length === 0) { wrap.innerHTML = '<span class="no-countries-hint">No countries selected — all users included</span>'; return; }
   filters.countries.forEach(country => {
     const tag = document.createElement('span');
     tag.className = 'country-tag';
@@ -449,25 +704,10 @@ function renderSelectedCountries() {
     wrap.appendChild(tag);
   });
 }
-
 function removeCountry(country) {
   filters.countries = filters.countries.filter(c => c !== country);
   renderSelectedCountries();
   renderCountryList(document.getElementById('countrySearch').value);
-  resetToPreview();
-}
-
-// ===== Age filter logic =====
-function toggleAgeFilter(enabled) {
-  filters.age.enabled = enabled;
-  const wrap = document.getElementById('ageFilterWrap');
-  wrap.classList.toggle('disabled', !enabled);
-  resetToPreview();
-}
-
-function updateAgeFilter() {
-  filters.age.operator = document.getElementById('ageOperator').value;
-  filters.age.value = parseInt(document.getElementById('ageValue').value, 10) || 0;
   resetToPreview();
 }
 
@@ -479,7 +719,7 @@ function setLang(btn) {
   resetToPreview();
 }
 
-// ===== Preview =====
+// ===== Preview message =====
 function updatePreview() {
   const text = document.getElementById('msgText').value.trim();
   const photo = document.getElementById('msgPhoto').value.trim();
@@ -499,11 +739,10 @@ function updatePreview() {
   box.innerHTML = html + rendered;
 }
 
-// ===== Two-step send flow =====
-
+// ===== Two-step flow =====
 function handleSendBtn() {
   if (sendStep === 'preview') previewAudience();
-  else                        sendBroadcast();
+  else sendBroadcast();
 }
 
 function resetToPreview() {
@@ -559,12 +798,10 @@ async function previewAudience() {
     clearInterval(ticker);
     progressFill.style.width = '100%';
 
-    // Show audience preview block
     document.getElementById('audienceCount').textContent = cachedPhones.length;
     document.getElementById('audienceSummary').innerHTML = buildAudienceSummary(allUsers.length, filtered.length);
     document.getElementById('audiencePreview').style.display = 'block';
 
-    // Advance to send step
     sendStep = 'send';
     btn.textContent = '📤 Send broadcast';
     btn.style.background = '#1a5e35';
@@ -580,12 +817,43 @@ async function previewAudience() {
 
 function buildAudienceSummary(total, matched) {
   const parts = [];
-  if (filters.countries.length > 0)
-    parts.push(`Country: ${filters.countries.join(', ')}`);
-  if (filters.age.enabled)
-    parts.push(`Age: ${({ gte: '≥', lte: '≤', eq: '=' }[filters.age.operator])} ${filters.age.value}`);
-  if (selectedLang)
-    parts.push(`Language: ${selectedLang}`);
+  if (filters.countries.length > 0) parts.push(`Country: ${filters.countries.join(', ')}`);
+  if (filters.age.enabled) {
+    if (filters.age.operator === 'range') parts.push(`Age: ${filters.age.value}–${filters.age.valueMax}`);
+    else parts.push(`Age: ${{ gte:'≥', lte:'≤', eq:'=' }[filters.age.operator]} ${filters.age.value}`);
+  }
+  if (filters.birthday.enabled && filters.birthday.months.length > 0)
+    parts.push(`Birthday month: ${filters.birthday.months.map(m => MONTHS[m-1]).join(', ')}`);
+  if (filters.lastPurchase.enabled) {
+    if (filters.lastPurchase.days) parts.push(`Last purchase: within ${filters.lastPurchase.days} days`);
+    else if (filters.lastPurchase.from || filters.lastPurchase.to)
+      parts.push(`Last purchase: ${filters.lastPurchase.from || '…'} → ${filters.lastPurchase.to || '…'}`);
+  }
+  if (filters.firstPurchase.enabled) {
+    const from = document.getElementById('firstPurchaseFrom').value;
+    const to = document.getElementById('firstPurchaseTo').value;
+    if (from || to) parts.push(`First purchase: ${from || '…'} → ${to || '…'}`);
+  }
+  if (filters.ordersCount.enabled) {
+    const op = document.getElementById('ordersCountOperator').value;
+    const v = document.getElementById('ordersCountValue').value;
+    const v2 = document.getElementById('ordersCountValueMax').value;
+    parts.push(`Orders: ${op === 'range' ? `${v}–${v2}` : `${{ gte:'≥', lte:'≤', eq:'=' }[op]} ${v}`}`);
+  }
+  if (filters.totalSpend.enabled) {
+    const op = document.getElementById('totalSpendOperator').value;
+    const v = document.getElementById('totalSpendValue').value;
+    const v2 = document.getElementById('totalSpendValueMax').value;
+    parts.push(`Total spend: ${op === 'range' ? `${v}–${v2}` : `${{ gte:'≥', lte:'≤' }[op]} ${v}`} THB`);
+  }
+  if (filters.avgOrder.enabled) {
+    const op = document.getElementById('avgOrderOperator').value;
+    const v = document.getElementById('avgOrderValue').value;
+    const v2 = document.getElementById('avgOrderValueMax').value;
+    parts.push(`Avg order: ${op === 'range' ? `${v}–${v2}` : `${{ gte:'≥', lte:'≤' }[op]} ${v}`} THB`);
+  }
+  if (selectedLang) parts.push(`Language: ${selectedLang}`);
+
   const filterLine = parts.length ? parts.join(' · ') : 'No filters — all users';
   return `${filterLine}<br><span style="color:#aaa">${matched} of ${total} total users</span>`;
 }
@@ -627,7 +895,6 @@ async function sendBroadcast() {
     if (failed) { showError(`${failed.channel}: ${failed.data?.detail || 'HTTP ' + failed.status}`); return; }
     const firstData = results[0].data;
     showSuccess({ sent: firstData?.sent ?? cachedPhones.length, failed: firstData?.failed ?? 0, total: firstData?.total ?? cachedPhones.length });
-    // Reset flow after success
     resetToPreview();
   } catch (e) {
     clearInterval(ticker);
@@ -638,54 +905,154 @@ async function sendBroadcast() {
   }
 }
 
-// ===== Broadcast =====
-
 // ===== Filter pipeline =====
-// Each filter is a function (user) => bool.
-// To add a new filter, push a new function into FILTER_PIPELINE.
-// The pipeline runs in order — all conditions must pass (AND logic).
+function calcAge(dobStr) {
+  if (!dobStr) return null;
+  const birth = new Date(dobStr);
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
+function getLastPurchaseDate(user) {
+  if (!user.orders || user.orders.length === 0) return null;
+  return new Date(Math.max(...user.orders.map(o => new Date(o.date))));
+}
+
+function getFirstPurchaseDate(user) {
+  if (!user.orders || user.orders.length === 0) return null;
+  return new Date(Math.min(...user.orders.map(o => new Date(o.date))));
+}
+
+function getTotalSpend(user) {
+  if (!user.orders) return 0;
+  return user.orders.reduce((s, o) => s + (o.sum || 0), 0);
+}
+
+function getAvgOrder(user) {
+  if (!user.orders || user.orders.length === 0) return 0;
+  return getTotalSpend(user) / user.orders.length;
+}
+
+function compareNum(val, operator, threshold, thresholdMax) {
+  if (operator === 'gte') return val >= threshold;
+  if (operator === 'lte') return val <= threshold;
+  if (operator === 'eq')  return val === threshold;
+  if (operator === 'range') return val >= threshold && val <= thresholdMax;
+  return true;
+}
 
 function buildFilterPipeline() {
   const pipeline = [];
 
-  // --- Language filter ---
-  // CRM language codes: "eng", "ru", "thai" — map from UI selection
+  // Language
   if (selectedLang) {
     const CRM_LANG = { en: 'eng', ru: 'ru', thai: 'thai' };
     const crmLang = CRM_LANG[selectedLang] ?? selectedLang;
     pipeline.push(user => user.language === crmLang);
   }
 
-  // --- Country filter ---
-  // filters.countries is [] when "all users" is selected
+  // Country
   if (filters.countries.length > 0) {
     const set = new Set(filters.countries);
     pipeline.push(user => set.has(user.country));
   }
 
-  // --- Age filter ---
+  // Age
   if (filters.age.enabled) {
-    updateAgeFilter(); // sync from DOM
-    const { operator, value } = filters.age;
+    const { operator, value, valueMax } = filters.age;
     pipeline.push(user => {
-      if (!user.date_of_birth) return false;
-      const birth = new Date(user.date_of_birth);
-      const today = new Date();
-      let age = today.getFullYear() - birth.getFullYear();
-      const m = today.getMonth() - birth.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-      if (operator === 'gte') return age >= value;
-      if (operator === 'lte') return age <= value;
-      if (operator === 'eq')  return age === value;
-      return true;
+      const age = calcAge(user.date_of_birth);
+      if (age === null) return false;
+      return compareNum(age, operator, value, valueMax);
     });
   }
 
-  // --- ADD NEW FILTERS HERE ---
-  // Example:
-  // if (filters.hasOrders) {
-  //   pipeline.push(user => user.orders && user.orders.length > 0);
-  // }
+  // Birthday month
+  if (filters.birthday.enabled && filters.birthday.months.length > 0) {
+    const monthSet = new Set(filters.birthday.months);
+    pipeline.push(user => {
+      if (!user.date_of_birth) return false;
+      const month = new Date(user.date_of_birth).getMonth() + 1; // 1-based
+      return monthSet.has(month);
+    });
+  }
+
+  // Last purchase
+  if (filters.lastPurchase.enabled) {
+    const preset = document.getElementById('lastPurchasePreset').value;
+    if (preset && preset !== 'custom' && filters.lastPurchase.days) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - filters.lastPurchase.days);
+      pipeline.push(user => {
+        const last = getLastPurchaseDate(user);
+        return last !== null && last >= cutoff;
+      });
+    } else {
+      const from = document.getElementById('lastPurchaseFrom').value;
+      const to   = document.getElementById('lastPurchaseTo').value;
+      if (from || to) {
+        const fromD = from ? new Date(from) : null;
+        const toD   = to   ? new Date(to + 'T23:59:59') : null;
+        pipeline.push(user => {
+          const last = getLastPurchaseDate(user);
+          if (!last) return false;
+          if (fromD && last < fromD) return false;
+          if (toD   && last > toD)   return false;
+          return true;
+        });
+      }
+    }
+  }
+
+  // First purchase
+  if (filters.firstPurchase.enabled) {
+    const from = document.getElementById('firstPurchaseFrom').value;
+    const to   = document.getElementById('firstPurchaseTo').value;
+    if (from || to) {
+      const fromD = from ? new Date(from) : null;
+      const toD   = to   ? new Date(to + 'T23:59:59') : null;
+      pipeline.push(user => {
+        const first = getFirstPurchaseDate(user);
+        if (!first) return false;
+        if (fromD && first < fromD) return false;
+        if (toD   && first > toD)   return false;
+        return true;
+      });
+    }
+  }
+
+  // Orders count
+  if (filters.ordersCount.enabled) {
+    const op  = document.getElementById('ordersCountOperator').value;
+    const val = parseInt(document.getElementById('ordersCountValue').value, 10) || 0;
+    const max = parseInt(document.getElementById('ordersCountValueMax').value, 10) || 0;
+    pipeline.push(user => {
+      const count = user.orders ? user.orders.length : 0;
+      return compareNum(count, op, val, max);
+    });
+  }
+
+  // Total spend
+  if (filters.totalSpend.enabled) {
+    const op  = document.getElementById('totalSpendOperator').value;
+    const val = parseFloat(document.getElementById('totalSpendValue').value) || 0;
+    const max = parseFloat(document.getElementById('totalSpendValueMax').value) || 0;
+    pipeline.push(user => compareNum(getTotalSpend(user), op, val, max));
+  }
+
+  // Average order
+  if (filters.avgOrder.enabled) {
+    const op  = document.getElementById('avgOrderOperator').value;
+    const val = parseFloat(document.getElementById('avgOrderValue').value) || 0;
+    const max = parseFloat(document.getElementById('avgOrderValueMax').value) || 0;
+    pipeline.push(user => {
+      if (!user.orders || user.orders.length === 0) return false;
+      return compareNum(getAvgOrder(user), op, val, max);
+    });
+  }
 
   return pipeline;
 }
@@ -695,15 +1062,11 @@ function applyFilters(users) {
   return users.filter(user => pipeline.every(fn => fn(user)));
 }
 
-
-// POST { phones, text, ?photo, ?video } to {base_url}/broadcastlist
+// ===== Broadcast =====
 async function sendToMessenger(server, payload) {
   const res = await fetch(`${server.url.replace(/\/$/, '')}/broadcastlist`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(server.token ? { 'X-API-Key': server.token } : {})
-    },
+    headers: { 'Content-Type': 'application/json', ...(server.token ? { 'X-API-Key': server.token } : {}) },
     body: JSON.stringify(payload)
   });
   let data = {};
@@ -741,7 +1104,6 @@ function loadSettings() {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
   credentialInputs.forEach(id => { if (saved[id]) document.getElementById(id).value = saved[id]; });
 }
-
 function saveSettings() {
   if (!document.getElementById("rememberCredentials").checked) return;
   const data = {};
@@ -749,7 +1111,6 @@ function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   localStorage.setItem("rememberCredentials", "true");
 }
-
 function clearSettings() {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem("rememberCredentials");
@@ -770,7 +1131,6 @@ function initChannels() {
 function getServer(name) {
   return { url: document.getElementById(name + "Url").value.trim(), token: document.getElementById(name + "Token").value.trim() };
 }
-
 function getSelectedChannels() {
   const ch = [];
   if (document.getElementById("channelTelegram").checked) ch.push("telegram");
@@ -787,6 +1147,7 @@ window.addEventListener("load", () => {
   });
   initChannels();
   renderCountryList('');
+  initMonthGrid();
 });
 </script>
 </body>
