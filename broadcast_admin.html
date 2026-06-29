@@ -309,6 +309,18 @@
         </div>
       </div>
 
+      <!-- Event -->
+      <div class="server-block">
+        <div class="filter-section-title">Event</div>
+        <div class="field">
+          <input type="text" class="country-search-input" id="eventSearch" placeholder="Search events..." oninput="filterEventList(this.value)" autocomplete="off">
+          <div class="country-list" id="eventList" style="max-height: 160px;"></div>
+          <div class="selected-countries" id="selectedEvents">
+            <span class="no-countries-hint">No events selected — all users included</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Age -->
       <div class="server-block">
         <div class="filter-section-title">
@@ -508,12 +520,14 @@
 // ===== App state =====
 let selectedLang = '';
 let sendStep = 'preview';
-let cachedByPlatform = {}; // { telegram: [...phones], whatsapp: [...phones], line: [...phones] }
+let cachedByPlatform = {};
+let allEvents = new Set();
 
 const filters = {
   countries: [],
+  events: [],
   age: { enabled: false, operator: 'gte', value: 18, valueMax: 65 },
-  birthday: { enabled: false, months: [] },        // months: 1-based int[]
+  birthday: { enabled: false, months: [] },
   lastPurchase: { enabled: false, days: null, from: null, to: null },
   firstPurchase: { enabled: false, from: null, to: null },
   ordersCount: { enabled: false, operator: 'gte', value: 1, valueMax: 5 },
@@ -581,8 +595,6 @@ function toggleMonth(btn, month) {
 // ===== Generic enable/disable filter =====
 function toggleFilter(name, enabled) {
   filters[name].enabled = enabled;
-  const wrapId = name + 'FilterWrap';
-  // handle special cases
   const map = {
     age: 'ageFilterWrap',
     birthday: 'birthdayFilterWrap',
@@ -652,7 +664,6 @@ function toggleAvgRange() {
   document.getElementById('avgOrderValueMax').style.display = isRange ? '' : 'none';
 }
 
-// hook range selects
 document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('ordersCountOperator').addEventListener('change', () => { toggleOrdersCountRange(); resetToPreview(); });
   document.getElementById('totalSpendOperator').addEventListener('change', () => { toggleSpendRange(); resetToPreview(); });
@@ -708,6 +719,63 @@ function removeCountry(country) {
   filters.countries = filters.countries.filter(c => c !== country);
   renderSelectedCountries();
   renderCountryList(document.getElementById('countrySearch').value);
+  resetToPreview();
+}
+
+// ===== Events =====
+function collectEvents(users) {
+  users.forEach(u => { if (u.event) allEvents.add(u.event); });
+  renderEventList('');
+}
+
+function renderEventList(query) {
+  const list = document.getElementById('eventList');
+  const q = (query || '').toLowerCase().trim();
+  const visible = [...allEvents].filter(e => !q || e.toLowerCase().includes(q));
+  list.innerHTML = '';
+  if (visible.length === 0) {
+    list.innerHTML = '<label style="color:#aaa;font-size:13px;padding:8px 12px;display:block;">No events loaded yet — run Preview first</label>';
+    return;
+  }
+  visible.forEach(event => {
+    const checked = filters.events.includes(event);
+    const lbl = document.createElement('label');
+    lbl.innerHTML = `<input type="checkbox"${checked ? ' checked' : ''}> ${event}`;
+    lbl.querySelector('input').addEventListener('change', function() { toggleEvent(event, this.checked); });
+    list.appendChild(lbl);
+  });
+}
+
+function filterEventList(q) { renderEventList(q); }
+
+function toggleEvent(event, checked) {
+  if (checked && !filters.events.includes(event)) filters.events.push(event);
+  else if (!checked) filters.events = filters.events.filter(e => e !== event);
+  renderSelectedEvents();
+  renderEventList(document.getElementById('eventSearch').value);
+  resetToPreview();
+}
+
+function renderSelectedEvents() {
+  const wrap = document.getElementById('selectedEvents');
+  wrap.innerHTML = '';
+  if (!filters.events.length) {
+    wrap.innerHTML = '<span class="no-countries-hint">No events selected — all users included</span>';
+    return;
+  }
+  filters.events.forEach(event => {
+    const tag = document.createElement('span');
+    tag.className = 'country-tag';
+    const safe = event.replace(/'/g, "\\'");
+    tag.innerHTML = `${event}<button type="button" onclick="removeEvent('${safe}')" title="Remove">×</button>`;
+    wrap.appendChild(tag);
+  });
+}
+
+function removeEvent(event) {
+  filters.events = filters.events.filter(e => e !== event);
+  renderSelectedEvents();
+  renderEventList(document.getElementById('eventSearch').value);
   resetToPreview();
 }
 
@@ -785,7 +853,6 @@ async function previewAudience() {
   const ticker = setInterval(() => { prog = Math.min(prog + Math.random() * 10, 90); progressFill.style.width = prog + '%'; }, 300);
 
   try {
-    // Fetch users separately for each selected platform
     const platformResults = {};
     for (const ch of channels) {
       const crmRes = await fetch(`${crmUrl}/api/client/info?bot_platform=${ch}`, {
@@ -794,11 +861,11 @@ async function previewAudience() {
       if (!crmRes.ok) throw new Error(`CRM error for ${ch}: HTTP ${crmRes.status}`);
       const raw = await crmRes.json();
       const allUsers = Array.isArray(raw) ? raw : (raw.data ?? []);
+      collectEvents(allUsers);
       const filtered = applyFilters(allUsers);
       platformResults[ch] = { allUsers, filtered };
     }
 
-    // Build cachedByPlatform: phones per platform
     cachedByPlatform = {};
     let totalMatched = 0;
     let totalAll = 0;
@@ -813,8 +880,6 @@ async function previewAudience() {
     progressFill.style.width = '100%';
 
     document.getElementById('audienceCount').textContent = totalMatched;
-    // Use first platform's counts for summary (total across all)
-    const firstCh = channels[0];
     document.getElementById('audienceSummary').innerHTML = buildAudienceSummary(totalAll, totalMatched);
     document.getElementById('audiencePreview').style.display = 'block';
 
@@ -834,6 +899,7 @@ async function previewAudience() {
 function buildAudienceSummary(total, matched) {
   const parts = [];
   if (filters.countries.length > 0) parts.push(`Country: ${filters.countries.join(', ')}`);
+  if (filters.events.length > 0) parts.push(`Event: ${filters.events.join(', ')}`);
   if (filters.age.enabled) {
     if (filters.age.operator === 'range') parts.push(`Age: ${filters.age.value}–${filters.age.valueMax}`);
     else parts.push(`Age: ${{ gte:'≥', lte:'≤', eq:'=' }[filters.age.operator]} ${filters.age.value}`);
@@ -913,7 +979,6 @@ async function sendBroadcast() {
     progressFill.style.width = '100%';
     const failed = results.find(r => !r.ok);
     if (failed) { showError(`${failed.channel}: ${failed.data?.detail || 'HTTP ' + failed.status}`); return; }
-    // Aggregate stats across all platforms
     const sent  = results.reduce((s, r) => s + (r.data?.sent  ?? r.phones), 0);
     const fail  = results.reduce((s, r) => s + (r.data?.failed ?? 0), 0);
     const total = results.reduce((s, r) => s + (r.data?.total  ?? r.phones), 0);
@@ -970,20 +1035,22 @@ function compareNum(val, operator, threshold, thresholdMax) {
 function buildFilterPipeline() {
   const pipeline = [];
 
-  // Language
   if (selectedLang) {
     const CRM_LANG = { en: 'eng', ru: 'ru', thai: 'thai' };
     const crmLang = CRM_LANG[selectedLang] ?? selectedLang;
     pipeline.push(user => user.language === crmLang);
   }
 
-  // Country
   if (filters.countries.length > 0) {
     const set = new Set(filters.countries);
     pipeline.push(user => set.has(user.country));
   }
 
-  // Age
+  if (filters.events.length > 0) {
+    const set = new Set(filters.events);
+    pipeline.push(user => set.has(user.event));
+  }
+
   if (filters.age.enabled) {
     const { operator, value, valueMax } = filters.age;
     pipeline.push(user => {
@@ -993,17 +1060,15 @@ function buildFilterPipeline() {
     });
   }
 
-  // Birthday month
   if (filters.birthday.enabled && filters.birthday.months.length > 0) {
     const monthSet = new Set(filters.birthday.months);
     pipeline.push(user => {
       if (!user.date_of_birth) return false;
-      const month = new Date(user.date_of_birth).getMonth() + 1; // 1-based
+      const month = new Date(user.date_of_birth).getMonth() + 1;
       return monthSet.has(month);
     });
   }
 
-  // Last purchase
   if (filters.lastPurchase.enabled) {
     const preset = document.getElementById('lastPurchasePreset').value;
     if (preset && preset !== 'custom' && filters.lastPurchase.days) {
@@ -1030,7 +1095,6 @@ function buildFilterPipeline() {
     }
   }
 
-  // First purchase
   if (filters.firstPurchase.enabled) {
     const from = document.getElementById('firstPurchaseFrom').value;
     const to   = document.getElementById('firstPurchaseTo').value;
@@ -1047,7 +1111,6 @@ function buildFilterPipeline() {
     }
   }
 
-  // Orders count
   if (filters.ordersCount.enabled) {
     const op  = document.getElementById('ordersCountOperator').value;
     const val = parseInt(document.getElementById('ordersCountValue').value, 10) || 0;
@@ -1058,7 +1121,6 @@ function buildFilterPipeline() {
     });
   }
 
-  // Total spend
   if (filters.totalSpend.enabled) {
     const op  = document.getElementById('totalSpendOperator').value;
     const val = parseFloat(document.getElementById('totalSpendValue').value) || 0;
@@ -1066,7 +1128,6 @@ function buildFilterPipeline() {
     pipeline.push(user => compareNum(getTotalSpend(user), op, val, max));
   }
 
-  // Average order
   if (filters.avgOrder.enabled) {
     const op  = document.getElementById('avgOrderOperator').value;
     const val = parseFloat(document.getElementById('avgOrderValue').value) || 0;
@@ -1170,6 +1231,7 @@ window.addEventListener("load", () => {
   });
   initChannels();
   renderCountryList('');
+  renderEventList('');
   initMonthGrid();
 });
 </script>
