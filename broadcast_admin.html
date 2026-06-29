@@ -508,7 +508,7 @@
 // ===== App state =====
 let selectedLang = '';
 let sendStep = 'preview';
-let cachedPhones = [];
+let cachedByPlatform = {}; // { telegram: [...phones], whatsapp: [...phones], line: [...phones] }
 
 const filters = {
   countries: [],
@@ -747,7 +747,7 @@ function handleSendBtn() {
 
 function resetToPreview() {
   sendStep = 'preview';
-  cachedPhones = [];
+  cachedByPlatform = {};
   const btn = document.getElementById('sendBtn');
   btn.textContent = '🔍 Preview audience';
   btn.style.background = '';
@@ -785,25 +785,41 @@ async function previewAudience() {
   const ticker = setInterval(() => { prog = Math.min(prog + Math.random() * 10, 90); progressFill.style.width = prog + '%'; }, 300);
 
   try {
-    const crmRes = await fetch(`${crmUrl}/api/client/info`, {
-      headers: { 'Authorization': 'Bearer ' + crmToken, 'Content-Type': 'application/json', 'Accept-Language': 'en' }
-    });
-    if (!crmRes.ok) throw new Error(`CRM error: HTTP ${crmRes.status}`);
-    const raw = await crmRes.json();
-    const allUsers = Array.isArray(raw) ? raw : (raw.data ?? []);
+    // Fetch users separately for each selected platform
+    const platformResults = {};
+    for (const ch of channels) {
+      const crmRes = await fetch(`${crmUrl}/api/client/info?bot_platform=${ch}`, {
+        headers: { 'Authorization': 'Bearer ' + crmToken, 'Content-Type': 'application/json', 'Accept-Language': 'en' }
+      });
+      if (!crmRes.ok) throw new Error(`CRM error for ${ch}: HTTP ${crmRes.status}`);
+      const raw = await crmRes.json();
+      const allUsers = Array.isArray(raw) ? raw : (raw.data ?? []);
+      const filtered = applyFilters(allUsers);
+      platformResults[ch] = { allUsers, filtered };
+    }
 
-    const filtered = applyFilters(allUsers);
-    cachedPhones = filtered.map(u => u.phone).filter(Boolean);
+    // Build cachedByPlatform: phones per platform
+    cachedByPlatform = {};
+    let totalMatched = 0;
+    let totalAll = 0;
+    for (const ch of channels) {
+      const phones = platformResults[ch].filtered.map(u => u.phone).filter(Boolean);
+      cachedByPlatform[ch] = phones;
+      totalMatched += phones.length;
+      totalAll += platformResults[ch].allUsers.length;
+    }
 
     clearInterval(ticker);
     progressFill.style.width = '100%';
 
-    document.getElementById('audienceCount').textContent = cachedPhones.length;
-    document.getElementById('audienceSummary').innerHTML = buildAudienceSummary(allUsers.length, filtered.length);
+    document.getElementById('audienceCount').textContent = totalMatched;
+    // Use first platform's counts for summary (total across all)
+    const firstCh = channels[0];
+    document.getElementById('audienceSummary').innerHTML = buildAudienceSummary(totalAll, totalMatched);
     document.getElementById('audiencePreview').style.display = 'block';
 
     sendStep = 'send';
-    btn.textContent = '📤 Send broadcast';
+    btn.textContent = `📤 Send broadcast (${totalMatched} users)`;
     btn.style.background = '#1a5e35';
 
   } catch (e) {
@@ -859,7 +875,8 @@ function buildAudienceSummary(total, matched) {
 }
 
 async function sendBroadcast() {
-  if (cachedPhones.length === 0) { showError('Run preview first.'); return; }
+  const totalPhones = Object.values(cachedByPlatform).reduce((s, arr) => s + arr.length, 0);
+  if (totalPhones === 0) { showError('Run preview first.'); return; }
 
   const text  = document.getElementById('msgText').value.trim();
   const photo = document.getElementById('msgPhoto').value.trim();
@@ -868,13 +885,13 @@ async function sendBroadcast() {
   const servers = { telegram: getServer('telegram'), whatsapp: getServer('whatsapp'), line: getServer('line') };
 
   const langLabel = selectedLang ? ({ ru: 'russian', en: 'english', thai: 'thai' }[selectedLang] || selectedLang) : 'all users';
-  if (!confirm(`Send broadcast to ${cachedPhones.length} users (${langLabel})?`)) return;
+  if (!confirm(`Send broadcast to ${totalPhones} users (${langLabel})?`)) return;
 
   const btn = document.getElementById('sendBtn');
   const progressBar  = document.getElementById('progressBar');
   const progressFill = document.getElementById('progressFill');
   btn.disabled = true;
-  btn.textContent = `Sending to ${cachedPhones.length} users...`;
+  btn.textContent = `Sending to ${totalPhones} users...`;
   document.getElementById('resultBox').style.display = 'none';
   progressBar.style.display = 'block';
   progressFill.style.width = '20%';
@@ -882,19 +899,25 @@ async function sendBroadcast() {
   let prog = 20;
   const ticker = setInterval(() => { prog = Math.min(prog + Math.random() * 8, 85); progressFill.style.width = prog + '%'; }, 400);
 
-  const basePayload = { phones: cachedPhones, text };
-  if (photo)      basePayload.photo = photo;
-  else if (video) basePayload.video = video;
-
   try {
     const results = [];
-    for (const ch of channels) { results.push({ channel: ch, ...await sendToMessenger(servers[ch], basePayload) }); }
+    for (const ch of channels) {
+      const phones = cachedByPlatform[ch] || [];
+      if (phones.length === 0) continue;
+      const payload = { phones, text };
+      if (photo)      payload.photo = photo;
+      else if (video) payload.video = video;
+      results.push({ channel: ch, phones: phones.length, ...await sendToMessenger(servers[ch], payload) });
+    }
     clearInterval(ticker);
     progressFill.style.width = '100%';
     const failed = results.find(r => !r.ok);
     if (failed) { showError(`${failed.channel}: ${failed.data?.detail || 'HTTP ' + failed.status}`); return; }
-    const firstData = results[0].data;
-    showSuccess({ sent: firstData?.sent ?? cachedPhones.length, failed: firstData?.failed ?? 0, total: firstData?.total ?? cachedPhones.length });
+    // Aggregate stats across all platforms
+    const sent  = results.reduce((s, r) => s + (r.data?.sent  ?? r.phones), 0);
+    const fail  = results.reduce((s, r) => s + (r.data?.failed ?? 0), 0);
+    const total = results.reduce((s, r) => s + (r.data?.total  ?? r.phones), 0);
+    showSuccess({ sent, failed: fail, total });
     resetToPreview();
   } catch (e) {
     clearInterval(ticker);
